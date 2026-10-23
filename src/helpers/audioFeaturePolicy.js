@@ -31,7 +31,6 @@ function audioFeatureFailure(snapshot, purpose) {
 function createAudioFeaturePolicy({ getPolicy, onBlocked = () => {} }) {
   const jobs = new Map();
   let snapshot = null;
-  let epoch = 0;
   const failure = (purpose) => audioFeatureFailure(snapshot, purpose);
 
   function update(next) {
@@ -57,12 +56,10 @@ function createAudioFeaturePolicy({ getPolicy, onBlocked = () => {} }) {
     failure,
     signalFor: (event) => jobs.get(event)?.controller.signal,
     cancelAll() {
-      epoch++;
       snapshot = null;
       for (const job of jobs.values()) job.controller.abort();
     },
     async run(event, purpose, handler) {
-      const startedEpoch = epoch;
       const job = { purpose, controller: new AbortController() };
       jobs.set(event, job);
       const onDestroyed = () => job.controller.abort();
@@ -70,8 +67,6 @@ function createAudioFeaturePolicy({ getPolicy, onBlocked = () => {} }) {
       try {
         const next = await getPolicy(event);
         job.controller.signal.throwIfAborted();
-        if (startedEpoch !== epoch)
-          return { success: false, code: "AUDIO_OPERATION_CANCELLED", error: "Cancelled" };
         update(next);
         const denied = failure(purpose);
         if (denied) return denied;
