@@ -9116,7 +9116,8 @@ class IPCHandlers {
       meetingLocalTranscribePromise = (async () => {
         try {
           await transcribeLocalMeetingChunk("system");
-          await transcribeLocalMeetingChunk("mic");
+          if (!this._audioFeaturePolicy.failure("meeting"))
+            await transcribeLocalMeetingChunk("mic");
         } finally {
           meetingLocalTranscribePromise = null;
         }
