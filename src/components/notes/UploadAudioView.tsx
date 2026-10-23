@@ -284,6 +284,12 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
     customTranscriptionApiKey,
   } = apiKeys;
   const policyState = usePolicySnapshot();
+  const uploadRestrictionKey =
+    policyState.status !== "managed" || !policyState.policy
+      ? "common.policyUnresolved"
+      : policyState.policy.features.audioUploadEnabled === false
+        ? "notes.upload.disabledByOrg"
+        : "common.policyTranscriptionRestricted";
 
   const {
     useLocalWhisper,
@@ -996,8 +1002,11 @@ export default function UploadAudioView({ onNoteCreated, onOpenSettings }: Uploa
         style={{ animation: "float-up 0.4s ease-out" }}
       >
         {!isAudioFeatureAllowed(policyState, "upload") && (
-          <p role="status" className="mb-4 text-center text-sm text-muted-foreground">
-            {t("common.managedByOrg")}
+          <p
+            role="status"
+            className="mb-5 rounded-xl border border-border bg-surface-2 px-4 py-3 text-center text-sm text-foreground/80"
+          >
+            {t(uploadRestrictionKey)}
           </p>
         )}
         {state === "idle" && providerReady === false && (
