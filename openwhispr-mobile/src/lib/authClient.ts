@@ -220,19 +220,25 @@ export async function getSession(
   }
 }
 
+async function cacheAndroidSessionAfterSignIn(
+  data: { user?: unknown; token?: string | null } | null,
+): Promise<void> {
+  if (Platform.OS !== 'android' || !data?.user || !data.token) return;
+  // Auth routes supply a user/token, but Expo only caches the complete
+  // server-issued session on get-session. Warm it while online so a later
+  // restart during a transport outage can recover the matching workspace.
+  // Signup without auto-sign-in has no token and must not warm another session.
+  // Failure here must not turn successful authentication into a failure;
+  // startup still rejects absent, expired or cookie-mismatched cached sessions.
+  await client.getSession({ fetchOptions: { timeout: 5000 } }).catch(() => undefined);
+}
+
 export async function signInWithEmail(email: string, password: string): Promise<AuthResult> {
   const { data, error } = await client.signIn.email({ email, password });
   if (error) {
     return { user: null, sessionCookie: null, error: error.message ?? 'Sign in failed' };
   }
-  if (Platform.OS === 'android' && data?.user) {
-    // Email login supplies a user/token, but Expo only caches the complete
-    // server-issued session on get-session. Warm it while online so a later
-    // restart during a transport outage can recover the matching workspace.
-    // Failure here must not turn a successful login into a failed one; startup
-    // still rejects absent, expired or cookie-mismatched cached sessions.
-    await client.getSession({ fetchOptions: { timeout: 5000 } }).catch(() => undefined);
-  }
+  await cacheAndroidSessionAfterSignIn(data);
   return { user: mapUser(data?.user), sessionCookie: currentCookie(), error: null };
 }
 
@@ -249,6 +255,7 @@ export async function signUpWithEmail(
   if (error) {
     return { user: null, sessionCookie: null, error: error.message ?? 'Sign up failed' };
   }
+  await cacheAndroidSessionAfterSignIn(data);
   return { user: mapUser(data?.user), sessionCookie: currentCookie(), error: null };
 }
 
@@ -268,6 +275,7 @@ export async function signInAnonymously(): Promise<AnonymousAuthResult> {
       status: error.status || null,
     };
   }
+  await cacheAndroidSessionAfterSignIn(data);
   return { user: mapUser(data?.user), sessionCookie: currentCookie(), error: null, status: null };
 }
 

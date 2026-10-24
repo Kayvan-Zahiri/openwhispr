@@ -49,7 +49,13 @@ const cookie = JSON.stringify({
 });
 const originalFetch = global.fetch;
 const outcomes = [];
-async function checkFreshLogin({ platform = 'android', sessionAvailable = true } = {}) {
+async function checkFreshLogin({
+  flow = 'email',
+  platform = 'android',
+  sessionAvailable = true,
+  autoSignIn = true,
+  rejected = false,
+} = {}) {
   Platform.OS = platform;
   const values = new Map();
   const storage = {
@@ -58,24 +64,48 @@ async function checkFreshLogin({ platform = 'android', sessionAvailable = true }
     deleteItemAsync: async (key) => values.delete(key),
   };
   let restarted = false;
+  let sessionRequests = 0;
+  const flowUser = { ...user, isAnonymous: flow === 'anonymous' };
+  const endpoint = {
+    email: '/sign-in/email',
+    signup: '/sign-up/email',
+    anonymous: '/sign-in/anonymous',
+  }[flow];
   global.fetch = async (input) => {
     const pathname = new URL(input instanceof global.Request ? input.url : input).pathname;
-    if (pathname.endsWith('/sign-in/email')) {
-      // Email login returns a user and token, not the full session cache shape.
+    if (pathname.endsWith(endpoint)) {
+      if (rejected) {
+        return new global.Response(JSON.stringify({ message: 'Fixture rejection' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      // These SDK routes return a user/token, not the complete session shape.
+      // Signup can also require email verification and return no session token.
       return new global.Response(
-        JSON.stringify({ user, token: initial.session.token, redirect: false }),
+        JSON.stringify({
+          user: flowUser,
+          token: autoSignIn ? initial.session.token : null,
+          redirect: false,
+        }),
         {
           status: 200,
           headers: {
             'content-type': 'application/json',
-            'set-cookie': 'better-auth.session_token=fixture-token.signature; Path=/; HttpOnly',
+            ...(autoSignIn
+              ? {
+                  'set-cookie':
+                    'better-auth.session_token=fixture-token.signature; Path=/; HttpOnly',
+                }
+              : {}),
           },
         },
       );
     }
     assert.ok(pathname.endsWith('/get-session'), pathname);
+    sessionRequests += 1;
     return !restarted && sessionAvailable
-      ? new global.Response(JSON.stringify(initial), {
+      ? new global.Response(JSON.stringify({ ...initial, user: flowUser }), {
           headers: { 'content-type': 'application/json' },
         })
       : new global.Response('<title>Gateway</title>', { headers: { 'content-type': 'text/html' } });
@@ -94,18 +124,35 @@ async function checkFreshLogin({ platform = 'android', sessionAvailable = true }
       process.argv[2],
     );
   const auth = loadAuth();
-  const result = await auth.signInWithEmail(user.email, 'fixture-password');
-  assert.deepEqual(result.user, user, 'login still succeeds');
-  assert.equal(result.error, null);
+  const result = await {
+    email: () => auth.signInWithEmail(user.email, 'fixture-password'),
+    signup: () => auth.signUpWithEmail(user.email, 'fixture-password'),
+    anonymous: () => auth.signInAnonymously(),
+  }[flow]();
+  assert.deepEqual(
+    result.user,
+    rejected ? null : flowUser,
+    `${flow}: authentication result preserved`,
+  );
+  assert.equal(result.error, rejected ? 'Fixture rejection' : null);
+  const warmRequests = sessionRequests;
   restarted = true;
   const restartedAuth = loadAuth();
-  const expected = platform === 'android' && sessionAvailable ? user : null;
+  const expected =
+    platform === 'android' && sessionAvailable && autoSignIn && !rejected ? flowUser : null;
   assert.deepEqual(
     await restartedAuth.getSession({ allowOfflineCache: true }),
     expected,
-    'fresh login must survive a later gateway outage without relying on in-memory identity',
+    `${flow}: fresh session must survive a later gateway outage without relying on in-memory identity`,
   );
-  outcomes.push(`${platform} fresh email login, session available: ${sessionAvailable}`);
+  assert.equal(
+    warmRequests,
+    platform === 'android' && autoSignIn && !rejected ? 1 : 0,
+    `${flow}: only successful Android sessions are warmed`,
+  );
+  outcomes.push(
+    `${platform} ${flow}, session available: ${sessionAvailable}, auto sign in: ${autoSignIn}, rejected: ${rejected}`,
+  );
 }
 async function check(
   name,
@@ -165,9 +212,13 @@ async function check(
 }
 (async () => {
   try {
-    await checkFreshLogin();
-    await checkFreshLogin({ sessionAvailable: false });
-    await checkFreshLogin({ platform: 'ios' });
+    for (const flow of ['email', 'signup', 'anonymous']) {
+      await checkFreshLogin({ flow });
+      await checkFreshLogin({ flow, sessionAvailable: false });
+      await checkFreshLogin({ flow, platform: 'ios' });
+      await checkFreshLogin({ flow, rejected: true });
+    }
+    await checkFreshLogin({ flow: 'signup', autoSignIn: false });
     await check('Android gateway preserves matching cache');
     await check('Explicit validation rejects gateway', { allowOfflineCache: false, throws: true });
     await check('iOS behavior unchanged', { platform: 'ios', expected: null });
