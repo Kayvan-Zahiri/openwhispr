@@ -31,6 +31,7 @@ jest.mock('drizzle-orm/expo-sqlite', () => ({
     require('drizzle-orm/better-sqlite3').drizzle(connection.raw, options),
 }));
 jest.mock('expo-sqlite/localStorage/install', () => ({}));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('../../../modules/android-dictation/src', () => ({
   AndroidDictation: null,
   dictationEvents: null,
@@ -86,26 +87,7 @@ jest.mock('@/store/useConfigStore', () => ({
     subscribe: () => () => {},
   },
 }));
-// UI projections and remote requests are outside this database/auth integration test.
-jest.mock('@/store/useNotesStore', () => ({
-  useNotesStore: {
-    setState: jest.fn(),
-    getState: () => ({
-      initialize: jest.fn(),
-      reset: jest.fn(),
-      loadVoiceProfiles: jest.fn(),
-      loadFolders: jest.fn(),
-      loadSpaces: jest.fn(),
-      loadNotes: jest.fn(),
-    }),
-  },
-}));
-jest.mock('@/store/useDictionaryStore', () => ({
-  useDictionaryStore: { getState: () => ({ reset: jest.fn(), load: jest.fn() }) },
-}));
-jest.mock('@/store/useSnippetsStore', () => ({
-  useSnippetsStore: { getState: () => ({ reset: jest.fn(), load: jest.fn() }) },
-}));
+// Exercise the real collection stores during startup and account switches.
 jest.mock('@/lib/apiClient', () => ({
   ApiError: class extends Error {},
   isPolicyCloudBackupBlockedError: () => false,
@@ -404,4 +386,69 @@ it('retries interrupted account audio erasure before reopening local content', a
     (entry: { owner: string }) => entry.owner === 'account:account-a',
   );
   expect(account).toMatchObject({ deleted: true, erasureComplete: true, pendingAudio: [] });
+});
+
+it('cold startup opens retained Local content through the real data stores', async () => {
+  require('@/db/migrate').runMigrations();
+  const legacy = mockFiles.get('openwhispr_notes.db')!;
+  legacy.exec(`
+    INSERT INTO notes(id, title, content, folder_id) VALUES (81, 'Local fixture', 'Keep this Local note.', 1);
+    INSERT INTO dictionary_entries(word, source) VALUES ('LocalFixture', 'manual');
+    INSERT INTO snippets(trigger, replacement) VALUES ('local fixture', 'Keep this Local snippet.');
+  `);
+  mockSessionUser = null;
+  const { useAuthStore } = require('@/store/useAuthStore');
+  await useAuthStore.getState().initialize();
+  expect(require('../accountData').useAccountData.getState()).toMatchObject({
+    owner: 'local',
+    blocked: false,
+    error: null,
+  });
+  const { useNotesStore } = require('@/store/useNotesStore');
+  const { useDictionaryStore } = require('@/store/useDictionaryStore');
+  const { useSnippetsStore } = require('@/store/useSnippetsStore');
+  expect(useNotesStore.getState().notes).toEqual([
+    expect.objectContaining({ title: 'Local fixture', content: 'Keep this Local note.' }),
+  ]);
+  expect(useDictionaryStore.getState().entries).toEqual([
+    expect.objectContaining({ word: 'LocalFixture', source: 'manual' }),
+  ]);
+  expect(useSnippetsStore.getState().entries).toEqual([
+    { trigger: 'local fixture', replacement: 'Keep this Local snippet.' },
+  ]);
+});
+
+it('retains the legacy collection for its recorded account when upgrading while signed out', async () => {
+  require('@/db/migrate').runMigrations();
+  const legacy = mockFiles.get('openwhispr_notes.db')!;
+  legacy.exec(`
+    INSERT INTO sync_state(key, value) VALUES ('sync.user_id', 'account-a');
+    INSERT INTO notes(id, title, content, folder_id) VALUES (81, 'Retained fixture', 'Keep this legacy note.', 1);
+    INSERT INTO dictionary_entries(word, source) VALUES ('RetainedFixture', 'manual');
+    INSERT INTO snippets(trigger, replacement) VALUES ('retained fixture', 'Keep this legacy snippet.');
+  `);
+  mockSessionUser = null;
+  const { useAuthStore } = require('@/store/useAuthStore');
+  const { useNotesStore } = require('@/store/useNotesStore');
+  const { useDictionaryStore } = require('@/store/useDictionaryStore');
+  const { useSnippetsStore } = require('@/store/useSnippetsStore');
+  await useAuthStore.getState().initialize();
+  expect(require('../accountData').useAccountData.getState()).toMatchObject({
+    owner: 'local',
+    blocked: false,
+    error: null,
+  });
+  expect(useNotesStore.getState().notes).toEqual([]);
+  expect(useDictionaryStore.getState().entries).toEqual([]);
+  expect(useSnippetsStore.getState().entries).toEqual([]);
+  await useAuthStore.getState().signIn('account-a', 'synthetic');
+  expect(useNotesStore.getState().notes).toEqual([
+    expect.objectContaining({ title: 'Retained fixture', content: 'Keep this legacy note.' }),
+  ]);
+  expect(useDictionaryStore.getState().entries).toEqual([
+    expect.objectContaining({ word: 'RetainedFixture', source: 'manual' }),
+  ]);
+  expect(useSnippetsStore.getState().entries).toEqual([
+    { trigger: 'retained fixture', replacement: 'Keep this legacy snippet.' },
+  ]);
 });
