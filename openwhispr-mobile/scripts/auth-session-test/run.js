@@ -49,6 +49,64 @@ const cookie = JSON.stringify({
 });
 const originalFetch = global.fetch;
 const outcomes = [];
+async function checkFreshLogin({ platform = 'android', sessionAvailable = true } = {}) {
+  Platform.OS = platform;
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    deleteItemAsync: async (key) => values.delete(key),
+  };
+  let restarted = false;
+  global.fetch = async (input) => {
+    const pathname = new URL(input instanceof global.Request ? input.url : input).pathname;
+    if (pathname.endsWith('/sign-in/email')) {
+      // Email login returns a user and token, not the full session cache shape.
+      return new global.Response(
+        JSON.stringify({ user, token: initial.session.token, redirect: false }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'set-cookie': 'better-auth.session_token=fixture-token.signature; Path=/; HttpOnly',
+          },
+        },
+      );
+    }
+    assert.ok(pathname.endsWith('/get-session'), pathname);
+    return !restarted && sessionAvailable
+      ? new global.Response(JSON.stringify(initial), {
+          headers: { 'content-type': 'application/json' },
+        })
+      : new global.Response('<title>Gateway</title>', { headers: { 'content-type': 'text/html' } });
+  };
+  const loadAuth = () =>
+    load(
+      path.join(root, 'src/lib/authClient.ts'),
+      {
+        ...native,
+        '@better-auth/expo/client': expo,
+        'expo-application': { applicationId: 'com.gizmolabs.openwhispr' },
+        'expo-secure-store': storage,
+        './sessionFetch': { sessionFetch: global.fetch },
+        './apiClient': { getClientVersionHeader: () => 'test' },
+      },
+      process.argv[2],
+    );
+  const auth = loadAuth();
+  const result = await auth.signInWithEmail(user.email, 'fixture-password');
+  assert.deepEqual(result.user, user, 'login still succeeds');
+  assert.equal(result.error, null);
+  restarted = true;
+  const restartedAuth = loadAuth();
+  const expected = platform === 'android' && sessionAvailable ? user : null;
+  assert.deepEqual(
+    await restartedAuth.getSession({ allowOfflineCache: true }),
+    expected,
+    'fresh login must survive a later gateway outage without relying on in-memory identity',
+  );
+  outcomes.push(`${platform} fresh email login, session available: ${sessionAvailable}`);
+}
 async function check(
   name,
   {
@@ -107,6 +165,9 @@ async function check(
 }
 (async () => {
   try {
+    await checkFreshLogin();
+    await checkFreshLogin({ sessionAvailable: false });
+    await checkFreshLogin({ platform: 'ios' });
     await check('Android gateway preserves matching cache');
     await check('Explicit validation rejects gateway', { allowOfflineCache: false, throws: true });
     await check('iOS behavior unchanged', { platform: 'ios', expected: null });

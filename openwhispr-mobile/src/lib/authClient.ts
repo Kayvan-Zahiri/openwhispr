@@ -225,6 +225,14 @@ export async function signInWithEmail(email: string, password: string): Promise<
   if (error) {
     return { user: null, sessionCookie: null, error: error.message ?? 'Sign in failed' };
   }
+  if (Platform.OS === 'android' && data?.user) {
+    // Email login supplies a user/token, but Expo only caches the complete
+    // server-issued session on get-session. Warm it while online so a later
+    // restart during a transport outage can recover the matching workspace.
+    // Failure here must not turn a successful login into a failed one; startup
+    // still rejects absent, expired or cookie-mismatched cached sessions.
+    await client.getSession({ fetchOptions: { timeout: 5000 } }).catch(() => undefined);
+  }
   return { user: mapUser(data?.user), sessionCookie: currentCookie(), error: null };
 }
 
