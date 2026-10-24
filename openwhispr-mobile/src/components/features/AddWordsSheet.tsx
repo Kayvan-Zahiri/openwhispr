@@ -87,6 +87,9 @@ export function AddWordsSheet({ visible, onClose, onSubmit }: Props) {
           placeholder={copy('library.wordPlaceholder', 'Add words, names, or terms…')}
           accessibilityLabel={copy('library.addWords', 'Add words')}
           placeholderTextColor={PLACEHOLDER_COLOR}
+          // Android measures single-line hints at infinite width, clipping wrapped large text.
+          multiline={Platform.OS === 'android'}
+          submitBehavior={Platform.OS === 'android' ? 'blurAndSubmit' : undefined}
           returnKeyType="done"
           onSubmitEditing={handleSubmit}
           autoCorrect={false}
