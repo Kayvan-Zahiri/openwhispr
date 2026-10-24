@@ -22,7 +22,7 @@
     "clean": "npm run format && npm run lint && npm run typecheck",
     "pretest": "npm rebuild better-sqlite3",
     "test": "jest",
-    "test:security": "node --test scripts/__tests__/node-forge.test.js",
+    "test:security": "node --test scripts/__tests__/node-forge.test.js scripts/__tests__/zod.test.js",
     "test:watch": "jest --watch",
     "test:keyboard-capitalization": "sh scripts/test-keyboard-capitalization.sh",
     "postinstall": "patch-package --error-on-fail && npm run test:security && npm run download:brand-fonts",
@@ -101,7 +101,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^3.4.18",
     "whisper.rn": "^0.6.0",
-    "zod": "^4.1.12",
+    "zod": "4.6.6",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -130,6 +130,9 @@
     "typescript": "~5.9.2"
   },
   "overrides": {
+    "@expo/cli@55.0.37": {
+      "zod": "$zod"
+    },
     "@esbuild-kit/core-utils": {
       "esbuild": "0.25.12"
     },
