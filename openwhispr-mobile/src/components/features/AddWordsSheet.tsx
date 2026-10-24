@@ -110,16 +110,20 @@ export function AddWordsSheet({ visible, onClose, onSubmit }: Props) {
                 accessibilityLabel={copy('library.removeWord', `Remove ${segment.value}`, {
                   word: segment.value,
                 })}
-                style={({ pressed }) => ({
-                  borderCurve: 'continuous',
-                  backgroundColor: isContext ? CONTEXT_TINT : undefined,
-                  opacity: pressed ? 0.6 : 1,
-                })}
-                className={`${Platform.OS === 'android' ? 'min-h-8 py-1' : 'h-8'} flex-row items-center gap-1.5 rounded-[10px] pl-3 pr-2 ${
+                style={({ pressed }) => [
+                  Platform.OS === 'android' && styles.androidChip,
+                  {
+                    borderCurve: 'continuous',
+                    backgroundColor: isContext ? CONTEXT_TINT : undefined,
+                    opacity: pressed ? 0.6 : 1,
+                  },
+                ]}
+                className={`${Platform.OS === 'android' ? 'py-1' : 'h-8'} flex-row items-center gap-1.5 rounded-[10px] pl-3 pr-2 ${
                   isContext ? '' : 'bg-tertiarySystemFill'
                 }`}
               >
                 <Text
+                  style={Platform.OS === 'android' && styles.androidChipText}
                   className={`text-[13.5px] font-medium ${isContext ? 'text-link' : 'text-label'}`}
                 >
                   {segment.value}
@@ -152,6 +156,15 @@ export function AddWordsSheet({ visible, onClose, onSubmit }: Props) {
 }
 
 const styles = StyleSheet.create({
+  androidChip: {
+    maxWidth: '100%',
+    minWidth: 48,
+    minHeight: 48,
+  },
+  androidChipText: {
+    minWidth: 0,
+    flexShrink: 1,
+  },
   input: {
     color: LABEL_COLOR,
     fontFamily: AppFont.regular,
