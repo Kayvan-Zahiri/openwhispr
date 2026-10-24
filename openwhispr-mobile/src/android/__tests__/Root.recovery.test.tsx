@@ -1,5 +1,19 @@
 import React from 'react';
 import { act, render, waitFor } from '@testing-library/react-native';
+jest.mock('../accountData', () => ({
+  useAccountData: Object.assign(
+    (select: (state: unknown) => unknown) => select({ revision: 1, blocked: false, error: null }),
+    {
+      getState: () => ({
+        owner: 'account:a',
+        audioNamespace: '',
+        revision: 1,
+        blocked: false,
+        error: null,
+      }),
+    },
+  ),
+}));
 
 const mockNote = {
   id: 81,
@@ -73,6 +87,7 @@ jest.mock('expo-sqlite/localStorage/install', () => ({}));
 jest.mock('expo-file-system/legacy', () => ({
   documentDirectory: 'file:///docs/',
   readDirectoryAsync: async () => ['meeting-81.wav'],
+  getInfoAsync: async () => ({ exists: true }),
 }));
 jest.mock('@/data', () => ({
   notesRepository: {

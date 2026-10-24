@@ -30,12 +30,16 @@ import { OpenWhisprMark } from '@/components/ui/OpenWhisprMark';
 import { useRevenueCatIdentity } from '@/hooks/useRevenueCatIdentity';
 import { observeAndroidPurchaseUpdates } from './billing';
 import { useBubblePipeline } from './useBubblePipeline';
+import { useAccountData } from './accountData';
 
 export default function AndroidRoot() {
   const { t } = useTranslation();
   const [ready, setReady] = useState(false);
   const [bootError, setBootError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const accountError = useAccountData((state) => state.error);
+  const accountRevision = useAccountData((state) => state.revision);
+  const accountBlocked = useAccountData((state) => state.blocked);
   const [fonts, fontError] = useFonts({
     SpaceGrotesk_400Regular,
     SpaceGrotesk_500Medium,
@@ -67,15 +71,18 @@ export default function AndroidRoot() {
   useEffect(() => {
     if (fonts || fontError) SplashScreen.hideAsync().catch(() => undefined);
   }, [fonts, fontError]);
+  useEffect(() => {
+    if (ready && !accountError && !accountBlocked) startMeetingRecoveryOnce();
+  }, [ready, accountRevision, accountError, accountBlocked]);
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <OpenWhisprSuperwallProvider>
-          {bootError ? (
+          {bootError || accountError ? (
             <View style={[styles.content, { flex: 1, justifyContent: 'center' }]}>
               <Text style={styles.heading}>{t('bootError')}</Text>
-              <Text>{bootError}</Text>
+              <Text>{bootError || accountError}</Text>
               <Button
                 label={t('retry')}
                 onPress={() => {
@@ -84,8 +91,8 @@ export default function AndroidRoot() {
                 }}
               />
             </View>
-          ) : ready && (fonts || fontError) ? (
-            <Stack screenOptions={{ headerShown: false }} />
+          ) : ready && !accountBlocked && (fonts || fontError) ? (
+            <Stack key={accountRevision} screenOptions={{ headerShown: false }} />
           ) : (
             <View
               style={[

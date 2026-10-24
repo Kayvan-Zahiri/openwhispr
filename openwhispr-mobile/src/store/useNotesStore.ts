@@ -112,6 +112,13 @@ const loadLocalTranscriptionService = () => {
     require('@/services/transcription/LocalTranscriptionService') as typeof import('@/services/transcription/LocalTranscriptionService');
   return localTranscriptionModule.LocalTranscriptionService;
 };
+
+const createAndroidMeetingContext = (noteId: number, signal?: AbortSignal) =>
+  Platform.OS === 'android'
+    ? (
+        require('@/android/localMeetingContext') as typeof import('@/android/localMeetingContext')
+      ).createLocalMeetingContext(noteId, signal)
+    : undefined;
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 const reloadVoiceProfiles = (): Pick<NotesStore, 'voiceProfiles'> => ({
@@ -445,6 +452,7 @@ interface NotesStore {
 
   initialize: () => void;
   getNoteById: (id: number) => Note | null;
+  reset: () => void;
   loadFolders: () => void;
   loadSpaces: () => void;
   loadNotes: (folderId?: number) => void;
@@ -535,6 +543,24 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
   searchQuery: '',
   isSearching: false,
   transcriptRevision: 0,
+
+  reset: () =>
+    set({
+      folders: [],
+      spaceFolders: [],
+      folderCounts: {},
+      notes: [],
+      spaces: [],
+      voiceProfiles: [],
+      meetingSpeakerEmbeddingsByNoteId: {},
+      activeNoteId: null,
+      activeFolderId: null,
+      activeSpaceId: null,
+      isInitialized: false,
+      searchQuery: '',
+      isSearching: false,
+      transcriptRevision: 0,
+    }),
 
   initialize: () => {
     const folders = notesRepository.getPrivateFolders();
@@ -793,12 +819,7 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
 
   runMeetingPipeline: async (noteId, wavUri, expectedSpeakerCount, options) => {
     const { processMeeting, getDiarizer, LocalTranscriptionService } = loadMeetingPipelineDeps();
-    const context =
-      Platform.OS === 'android'
-        ? (
-            require('@/android/localMeetingContext') as typeof import('@/android/localMeetingContext')
-          ).createLocalMeetingContext(noteId, options?.signal)
-        : undefined;
+    const context = createAndroidMeetingContext(noteId, options?.signal);
     const checkpoint = () => context?.checkpoint();
     try {
       checkpoint();
@@ -869,11 +890,12 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
         return;
       }
       if (!user || user.isAnonymous) throw new Error('Sign in to retry this meeting with Cloud.');
-      get().transitionStatus(noteId, 'transcribing');
+      const context = createAndroidMeetingContext(noteId);
       try {
-        const { TranscriptionService } = await import(
-          '@/services/transcription/TranscriptionService'
-        );
+        context?.checkpoint();
+        get().transitionStatus(noteId, 'transcribing');
+        const { TranscriptionService } =
+          require('@/services/transcription/TranscriptionService') as typeof import('@/services/transcription/TranscriptionService');
         const result = await TranscriptionService.transcribe({
           audioUri: note.sourceFile,
           provider: 'cloud',
@@ -882,8 +904,7 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
           mimeType: 'audio/wav',
           language: getPreferredTranscriptionLanguage(),
         });
-        if (useAuthStore.getState().user?.id !== user.id)
-          throw new Error('Account changed. Retry after signing in again.');
+        context?.checkpoint();
         if (!result.text.trim()) throw new Error('No speech found in the recording.');
         await get().finalizeCloudMeeting(
           noteId,
@@ -898,9 +919,14 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
           result.duration,
         );
       } catch (error) {
-        if (notesRepository.getTranscriptionStatus(noteId) === 'transcribing')
+        if (
+          context?.ownsSavedNote() &&
+          notesRepository.getTranscriptionStatus(noteId) === 'transcribing'
+        )
           get().transitionStatus(noteId, 'failed');
         throw error;
+      } finally {
+        context?.dispose();
       }
       return;
     }
@@ -908,7 +934,10 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
   },
 
   finalizeCloudMeeting: async (noteId, utterances, elapsedSeconds, options) => {
+    const context = createAndroidMeetingContext(noteId);
+    const checkpoint = () => context?.checkpoint();
     try {
+      checkpoint();
       if (notesRepository.getTranscriptionStatus(noteId) !== 'transcribing')
         get().transitionStatus(noteId, 'transcribing');
       const segments = mapUtterancesToSegments(utterances, elapsedSeconds).map((segment) => ({
@@ -927,8 +956,9 @@ export const useNotesStore = create<NotesStore>((set, get) => ({
       if (hasRecognizedWords) {
         logTranscriptionCompleted({ source: 'meeting', provider: 'cloud' });
       }
-      await finalizeMeetingNoteContent(noteId);
+      await finalizeMeetingNoteContent(noteId, checkpoint);
     } finally {
+      context?.dispose();
       get().loadNotes();
     }
   },

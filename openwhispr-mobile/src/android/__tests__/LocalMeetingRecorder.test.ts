@@ -41,7 +41,7 @@ beforeEach(() => {
 it('uses a note-owned local capture path and never subscribes to streaming audio', async () => {
   const recorder = new LocalMeetingRecorder(7, jest.fn());
   await recorder.start();
-  expect(AndroidDictation!.startLocalMeeting).toHaveBeenCalledWith(7, recorder.captureId);
+  expect(AndroidDictation!.startLocalMeeting).toHaveBeenCalledWith(7, recorder.captureId, '');
   expect(recorder.uri).toBe('file:///app/files/meeting-7.wav');
   expect(jest.mocked(dictationEvents!.addListener).mock.calls.map(([name]) => name)).toEqual([
     'local-meeting-stopped',

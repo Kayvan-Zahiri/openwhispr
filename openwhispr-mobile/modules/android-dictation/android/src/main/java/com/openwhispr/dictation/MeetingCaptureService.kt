@@ -14,7 +14,6 @@ class MeetingCaptureService : Service() {
     var pendingStart: ((Exception?) -> Unit)? = null
     internal var pendingRoute: MeetingCaptureRoute? = null
     var pendingToken: String? = null
-    var lastUri: String? = null; private set
     fun finishStart(error: Exception?) {
       val callback = pendingStart
       pendingStart = null; pendingRoute = null; pendingToken = null
@@ -65,12 +64,9 @@ class MeetingCaptureService : Service() {
         .setContentIntent(launch).setOngoing(true).addAction(Notification.Action.Builder(null, getString(R.string.ow_meeting_stop), stop).build()).build()
       if (Build.VERSION.SDK_INT >= 29) startForeground(473, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE) else startForeground(473, notification)
       val noteId = captureRoute.noteId
-      val destination = File(filesDir, if (noteId > 0) "meeting-$noteId.wav" else "meeting-capture-${System.currentTimeMillis()}.wav")
-      // The streaming API's fallback URI must never point at a Local Mode recording.
-      if (!captureRoute.localOnly) {
-        lastUri = "file://${destination.absolutePath}"
-        getSharedPreferences("meeting-capture", MODE_PRIVATE).edit().putString("lastUri", lastUri).apply()
-      }
+      val directory = if (captureRoute.recordingDirectory.isEmpty()) filesDir else File(filesDir, captureRoute.recordingDirectory)
+      check(directory.isDirectory || directory.mkdirs()) { "Unable to open meeting audio storage." }
+      val destination = File(directory, if (noteId > 0) "meeting-$noteId.wav" else "meeting-capture-${System.currentTimeMillis()}.wav")
       var frameNumber = 0
       recorder = WavRecorder(this, sampleRate, destination, captureRoute.maximumSeconds,
         onFrame = captureRoute.frameListener { bytes, timestamp -> DictationService.emit?.invoke("pcm-frame", mapOf("audio" to Base64.encodeToString(bytes, Base64.NO_WRAP), "frameNumber" to frameNumber++, "timestampMs" to timestamp)) },

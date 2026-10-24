@@ -1,11 +1,13 @@
 import { randomUUID } from '@/lib/uuid';
 import * as FileSystem from 'expo-file-system/legacy';
 import { AndroidDictation, dictationEvents } from '../../modules/android-dictation/src';
+import { meetingAudioContext, meetingAudioDirectory } from '@/lib/meetingAudioStorage';
 
 /** A recording owns one durable note file. Permission is checked before the note is created. */
 export class LocalMeetingRecorder {
   readonly uri: string;
   readonly captureId = randomUUID();
+  private readonly audio = meetingAudioContext();
   private subscriptions: { remove(): void }[] = [];
   private starting: Promise<void> | null = null;
   private stopping: Promise<string> | null = null;
@@ -22,11 +24,12 @@ export class LocalMeetingRecorder {
       !FileSystem.documentDirectory
     )
       throw new Error('Invalid meeting note.');
-    this.uri = `${FileSystem.documentDirectory}meeting-${noteId}.wav`;
+    this.uri = `${meetingAudioDirectory(this.audio.namespace)}meeting-${noteId}.wav`;
   }
   start(): Promise<void> {
     if (this.starting) return this.starting;
     if (this.closed) return Promise.reject(this.cancelled());
+    if (!this.audio.isCurrent()) return Promise.reject(this.cancelled());
     if (!AndroidDictation?.startLocalMeeting || !dictationEvents)
       return Promise.reject(new Error('Local meeting capture unavailable.'));
     const notify = (noteId: number, captureId: string, error?: Error) => {
@@ -44,7 +47,7 @@ export class LocalMeetingRecorder {
       ),
     ];
     this.starting = this.invoke(() =>
-      AndroidDictation!.startLocalMeeting(this.noteId, this.captureId),
+      AndroidDictation!.startLocalMeeting(this.noteId, this.captureId, this.audio.namespace),
     )
       .then(() => {
         if (this.closed) throw this.cancelled();

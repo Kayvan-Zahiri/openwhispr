@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MeetingCaptureRouteTest {
+  @Test fun localAndCloudMeetingsUseTheirAccountAudioDirectory() {
+    val owner = "a1234567-1234-1234-1234-123456789012"
+    for (local in listOf(true, false)) {
+      assertEquals("account-audio/$owner", MeetingCaptureRoute(7, local, "capture", owner).recordingDirectory)
+    }
+    assertEquals("", MeetingCaptureRoute(7, true, "capture").recordingDirectory)
+  }
+  @Test fun accountAudioCannotEscapeAppStorage() {
+    for (namespace in listOf("../other-account", "/tmp/audio", "account/id", "not-a-uuid")) {
+      assertThrows(IllegalArgumentException::class.java) { MeetingCaptureRoute(7, true, "capture", namespace) }
+    }
+  }
   @Test fun localCaptureNeverDeliversFramesToAStreamingListener() {
     var delivered = 0
     val listener = MeetingCaptureRoute(7, true, "owner").frameListener { _, _ -> delivered++ }

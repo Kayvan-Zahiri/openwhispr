@@ -33,11 +33,11 @@ class AndroidDictationModule : Module() {
     require(listOf(context.filesDir, context.cacheDir).any { file.path.startsWith(it.canonicalPath + "/") }) { "File is outside app storage." }
     return file
   }
-  private fun startMeetingCapture(sampleRate: Int, noteId: Int, localOnly: Boolean, captureId: String?, promise: Promise) {
+  private fun startMeetingCapture(sampleRate: Int, noteId: Int, localOnly: Boolean, captureId: String?, audioNamespace: String, promise: Promise) {
     check(MeetingCaptureService.instance == null && MeetingCaptureService.pendingStart == null) { "A meeting is already recording." }
     require(!localOnly || !captureId.isNullOrBlank()) { "Invalid recording attempt." }
     val token = captureId ?: UUID.randomUUID().toString()
-    val route = MeetingCaptureRoute(noteId, localOnly, token)
+    val route = MeetingCaptureRoute(noteId, localOnly, token, audioNamespace)
     MeetingCaptureService.pendingRoute = route
     MeetingCaptureService.pendingToken = token
     MeetingCaptureService.pendingStart = { error ->
@@ -85,19 +85,18 @@ class AndroidDictationModule : Module() {
       if (diarizationRuntime.isInitialized()) diarizationRuntime.value.close()
       recorder?.close(); DictationService.emit = null
     }
-    AsyncFunction("startPCM") { sampleRate: Int, noteId: Int?, promise: Promise ->
-      startMeetingCapture(sampleRate, noteId ?: 0, false, null, promise)
+    AsyncFunction("startPCM") { sampleRate: Int, noteId: Int?, audioNamespace: String, promise: Promise ->
+      startMeetingCapture(sampleRate, noteId ?: 0, false, null, audioNamespace, promise)
     }.runOnQueue(Queues.MAIN)
     AsyncFunction("stopPCM") { promise: Promise -> stopMeetingCapture(null, null, promise) }.runOnQueue(Queues.MAIN)
-    AsyncFunction("startLocalMeeting") { noteId: Int, captureId: String, promise: Promise ->
-      startMeetingCapture(24000, noteId, true, captureId, promise)
+    AsyncFunction("startLocalMeeting") { noteId: Int, captureId: String, audioNamespace: String, promise: Promise ->
+      startMeetingCapture(24000, noteId, true, captureId, audioNamespace, promise)
     }.runOnQueue(Queues.MAIN)
     AsyncFunction("stopLocalMeeting") { noteId: Int, captureId: String, promise: Promise ->
       require(noteId > 0) { "Invalid meeting note." }
       stopMeetingCapture(noteId, captureId, promise)
     }.runOnQueue(Queues.MAIN)
     Function("isPCMRecording") { MeetingCaptureService.instance?.route?.localOnly == false }
-    Function("getPCMRecordingUri") { MeetingCaptureService.lastUri ?: context.getSharedPreferences("meeting-capture", android.content.Context.MODE_PRIVATE).getString("lastUri", null) }
     AsyncFunction("transcribeParakeet") { uri: String, modelDirectory: String, promise: Promise ->
       parakeet.transcribe(localFile(uri), localFile(modelDirectory), promise)
     }

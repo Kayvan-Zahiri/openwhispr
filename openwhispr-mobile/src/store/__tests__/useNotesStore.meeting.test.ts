@@ -1,4 +1,8 @@
 const mockSelectedMeetingSpeech = jest.fn(() => 'parakeet-v3');
+jest.mock('@/lib/meetingAudioStorage', () => ({
+  meetingAudioDirectory: () => 'file:///app/documents/',
+  meetingAudioContext: () => ({ namespace: '', key: 'test', isCurrent: () => true }),
+}));
 jest.mock('@/android/speechSelection', () => ({
   selectedSpeechModel: () => mockSelectedMeetingSpeech(),
 }));
@@ -6,6 +10,7 @@ jest.mock('expo-file-system/legacy', () => ({ documentDirectory: 'file:///app/do
 const mockProcessMeeting = jest.fn();
 const mockGetDiarizer = jest.fn();
 const mockLocalTranscribe = jest.fn();
+const mockCloudTranscribe = jest.fn();
 const mockGenerateNoteTitle = jest.fn();
 const mockDeriveLocalTitle = jest.fn();
 const mockPromptLocalReasoningFallback = jest.fn();
@@ -132,6 +137,9 @@ jest.mock('@/services/transcription/LocalTranscriptionService', () => ({
     isAvailable: jest.fn(() => true),
     isReadyForLanguage: jest.fn(async () => true),
   },
+}));
+jest.mock('@/services/transcription/TranscriptionService', () => ({
+  TranscriptionService: { transcribe: (...args: unknown[]) => mockCloudTranscribe(...args) },
 }));
 
 import { Platform } from 'react-native';
@@ -514,6 +522,7 @@ describe('finalizeCloudMeeting', () => {
     const originalPlatform = Platform.OS;
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
     try {
+      (notesRepository.getNoteById as jest.Mock).mockReturnValue({ id: 7, noteType: 'meeting' });
       await useNotesStore
         .getState()
         .finalizeCloudMeeting(
@@ -1774,5 +1783,103 @@ describe('Android private meeting recovery ownership', () => {
     expect(mockLogTranscriptionCompleted).not.toHaveBeenCalled();
     expect(notesRepository.updateNote).not.toHaveBeenCalled();
     expect(ReasoningService.processText).not.toHaveBeenCalled();
+  });
+});
+
+describe('Android Cloud meeting ownership', () => {
+  const originalPlatform = Platform.OS;
+  beforeEach(() => {
+    Platform.OS = 'android';
+    mockAuthState.user = signedInUser;
+    (notesRepository.getNoteById as jest.Mock).mockReturnValue({
+      id: 7,
+      noteType: 'meeting',
+      isPrivate: 0,
+      title: 'Saved meeting',
+      content: '',
+      sourceFile: 'file:///app/documents/meeting-7.wav',
+    });
+    let status = 'failed';
+    (notesRepository.getTranscriptionStatus as jest.Mock).mockImplementation(() => status);
+    (notesRepository.setTranscriptionStatus as jest.Mock).mockImplementation((_id, next) => {
+      status = next;
+    });
+  });
+  afterEach(() => {
+    Platform.OS = originalPlatform;
+    mockAuthListeners.clear();
+    mockModeListeners.clear();
+  });
+
+  it.each([false, true])(
+    'drops a delayed retry after switching account (return=%s)',
+    async (returns) => {
+      let finish!: (value: { text: string; duration: number }) => void;
+      let started!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      mockCloudTranscribe.mockImplementationOnce(() => {
+        started();
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      });
+      const pending = useNotesStore.getState().retryMeetingTranscription(7);
+      const rejected = pending.catch((error: unknown) => error);
+      await ready;
+      mockAuthState.user = { ...signedInUser, id: 'other-account' };
+      mockAuthListeners.forEach((fn) => fn());
+      if (returns) {
+        mockAuthState.user = signedInUser;
+        mockAuthListeners.forEach((fn) => fn());
+      }
+      (notesRepository.setTranscriptionStatus as jest.Mock).mockClear();
+      finish({ text: 'Late private transcript', duration: 4 });
+      expect(await rejected).toBeInstanceOf(Error);
+      expect(notesRepository.replaceSegments).not.toHaveBeenCalled();
+      expect(notesRepository.setTranscriptionStatus).not.toHaveBeenCalled();
+      expect(notesRepository.updateNote).not.toHaveBeenCalled();
+      expect(mockAuthListeners.size).toBe(0);
+    },
+  );
+
+  it('does not save a Cloud title after switching away and back', async () => {
+    mockConfigState.config.autoGenerateNoteTitle = true;
+    (notesRepository.getTranscriptionStatus as jest.Mock).mockReturnValue('transcribing');
+    (notesRepository.getSegments as jest.Mock).mockReturnValue([segment('Saved transcript')]);
+    let finish!: (title: string) => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    mockGenerateNoteTitle.mockImplementationOnce(() => {
+      started();
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    });
+    const pending = useNotesStore.getState().finalizeCloudMeeting(
+      7,
+      [
+        {
+          itemId: 'spoken',
+          text: 'Saved transcript',
+          startMs: 0,
+          endMs: 1000,
+        },
+      ],
+      1,
+    );
+    const rejected = pending.catch((error: unknown) => error);
+    await ready;
+    mockAuthState.user = null;
+    mockAuthListeners.forEach((fn) => fn());
+    mockAuthState.user = signedInUser;
+    mockAuthListeners.forEach((fn) => fn());
+    finish('Late title');
+    expect(await rejected).toBeInstanceOf(Error);
+    expect(notesRepository.updateNote).not.toHaveBeenCalled();
+    expect(mockAuthListeners.size).toBe(0);
   });
 });

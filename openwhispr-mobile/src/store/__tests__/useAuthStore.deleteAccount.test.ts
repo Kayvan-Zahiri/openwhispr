@@ -2,6 +2,11 @@ const mockDeleteAccountApi = jest.fn();
 const mockSignOutApi = jest.fn();
 const mockClearProviderCredentials = jest.fn();
 const mockEraseInsights = jest.fn();
+jest.mock('@/android/accountData', () => ({
+  prepareAccountData: jest.fn(),
+  eraseAccountData: async () => {},
+  retryAccountDataDeletion: async () => {},
+}));
 jest.mock('@/android/insights', () => ({
   eraseAccountInsights: (...args: unknown[]) => mockEraseInsights(...args),
 }));

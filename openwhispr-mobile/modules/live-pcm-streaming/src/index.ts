@@ -30,7 +30,7 @@ export const DEFAULT_SAMPLE_RATE = 24000;
 const AndroidModule =
   Platform.OS === 'android'
     ? requireNativeModule<{
-        startPCM(sampleRate: number, noteId: number | null): Promise<void>;
+        startPCM(sampleRate: number, noteId: number | null, audioNamespace: string): Promise<void>;
         stopPCM(): Promise<void>;
         isPCMRecording(): boolean;
       }>('AndroidDictation')
@@ -59,13 +59,16 @@ export const LivePCMStreaming = {
     signal?: AbortSignal,
   ): Promise<void> {
     if (AndroidModule) {
+      const { meetingAudioContext } =
+        require('../../../src/lib/meetingAudioStorage') as typeof import('../../../src/lib/meetingAudioStorage');
+      const audio = meetingAudioContext();
       const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
       if (result !== PermissionsAndroid.RESULTS.GRANTED)
         throw new Error('Microphone permission is required to record a meeting.');
       if (Number(Platform.Version) >= 33)
         await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-      if (signal?.aborted) throw new Error('Meeting cancelled.');
-      return AndroidModule.startPCM(sampleRate, noteId ?? null);
+      if (signal?.aborted || !audio.isCurrent()) throw new Error('Meeting cancelled.');
+      return AndroidModule.startPCM(sampleRate, noteId ?? null, audio.namespace);
     }
     if (!NativeModule) {
       throw new Error('Live microphone streaming is unavailable in this build.');
