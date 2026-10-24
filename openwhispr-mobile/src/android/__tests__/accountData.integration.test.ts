@@ -4,6 +4,7 @@ const mockFiles = new Map<string, InstanceType<typeof Database>>();
 const mockDeleteAudio = jest.fn().mockResolvedValue(undefined);
 const mockReadAudio = jest.fn().mockResolvedValue(['meeting-81.wav']);
 let mockSessionUser: { id: string; email: string; isAnonymous?: boolean } | null = null;
+let mockSessionFailure: Error | null = null;
 
 jest.mock('expo-sqlite', () => ({
   openDatabaseSync: (name: string) => {
@@ -49,7 +50,10 @@ jest.mock('expo-secure-store', () => ({
 }));
 jest.mock('@/lib/authClient', () => ({
   getStoredSession: async () => (mockSessionUser ? `test-${mockSessionUser.id}` : null),
-  getSession: async () => mockSessionUser,
+  getSession: async () => {
+    if (mockSessionFailure) throw mockSessionFailure;
+    return mockSessionUser;
+  },
   clearSession: async () => {},
   initAuthenticatedUser: async () => {},
   signInWithEmail: async (id: string) => {
@@ -107,6 +111,7 @@ beforeEach(() => {
   mockReadAudio.mockReset().mockResolvedValue(['meeting-81.wav']);
   mockFiles.clear();
   mockSessionUser = { id: 'account-a', email: 'a@example.invalid' };
+  mockSessionFailure = null;
   const values = new Map<string, string>();
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
@@ -221,13 +226,51 @@ it('blocks database reads when saved ownership cannot be read on a cold start', 
   const legacy = mockFiles.get('openwhispr_notes.db')!;
   legacy.exec("INSERT INTO notes(id, content) VALUES (81, 'Keep this private collection')");
   localStorage.setItem('android.local-accounts.v1', '{broken');
-  await require('@/store/useAuthStore').useAuthStore.getState().initialize();
+  await expect(
+    require('@/store/useAuthStore').useAuthStore.getState().initialize(),
+  ).rejects.toBeInstanceOf(SyntaxError);
   const { notesRepository } = require('@/data');
   expect(() => notesRepository.getAllNotes()).toThrow('Local account data is unavailable');
   expect(require('../accountData').useAccountData.getState().error).toBeTruthy();
   expect(legacy.prepare('SELECT content FROM notes WHERE id = 81').get()).toEqual({
     content: 'Keep this private collection',
   });
+});
+
+it('preserves the original Android startup error and retries without opening the wrong collection', async () => {
+  require('@/db/migrate').runMigrations();
+  const legacy = mockFiles.get('openwhispr_notes.db')!;
+  legacy.exec(
+    "INSERT INTO sync_state(key, value) VALUES ('sync.user_id', 'account-a'); INSERT INTO notes(id, content) VALUES (81, 'Keep this account note')",
+  );
+  const { useAuthStore } = require('@/store/useAuthStore');
+  const { notesRepository } = require('@/data');
+  const failure = new Error('Session initialization failed');
+  mockSessionFailure = failure;
+  await expect(useAuthStore.getState().initialize()).rejects.toBe(failure);
+  expect(useAuthStore.getState()).toMatchObject({ isInitialized: true, isLoading: false });
+  expect(require('../accountData').useAccountData.getState().blocked).toBe(true);
+  expect(() => notesRepository.getAllNotes()).toThrow('Local account data is unavailable');
+  expect(legacy.prepare('SELECT content FROM notes WHERE id = 81').get()).toEqual({
+    content: 'Keep this account note',
+  });
+
+  mockSessionFailure = null;
+  await useAuthStore.getState().initialize();
+  expect(require('../accountData').useAccountData.getState()).toMatchObject({
+    owner: 'account:account-a',
+    blocked: false,
+    error: null,
+  });
+  expect(notesRepository.getNoteById(81)?.content).toBe('Keep this account note');
+});
+
+it('retains the existing iOS initialization fallback when its session request fails', async () => {
+  require('react-native').Platform.OS = 'ios';
+  mockSessionFailure = new Error('Session initialization failed');
+  const { useAuthStore } = require('@/store/useAuthStore');
+  await expect(useAuthStore.getState().initialize()).resolves.toBeUndefined();
+  expect(useAuthStore.getState()).toMatchObject({ isInitialized: true, isLoading: false });
 });
 
 it('preserves both collections when an anonymous link collides with an existing account', async () => {

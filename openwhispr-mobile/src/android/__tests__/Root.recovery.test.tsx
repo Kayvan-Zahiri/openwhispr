@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 jest.mock('../accountData', () => ({
   useAccountData: Object.assign(
     (select: (state: unknown) => unknown) => select({ revision: 1, blocked: false, error: null }),
@@ -27,6 +27,8 @@ let mockResolveAuth: () => void;
 const mockAuth = new Promise<void>((resolve) => {
   mockResolveAuth = resolve;
 });
+const mockInitializeAuth = jest.fn(() => mockAuth);
+const mockLoadDictionary = jest.fn().mockResolvedValue(undefined);
 const mockResume = jest.fn();
 const mockInitializeNotes = jest.fn(() => {
   mockNotesLoaded = true;
@@ -37,7 +39,10 @@ const mockTransition = jest.fn((_id: number, status: string) => {
 jest.mock('@/android/strings', () => ({ observeAndroidLanguage: () => () => {} }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 // A cold deep link mounts its destination, without mounting Home/useAppInit.
-jest.mock('expo-router', () => ({ Stack: () => null }));
+jest.mock('expo-router', () => ({
+  Stack: () =>
+    require('react').createElement(require('react-native').Text, null, 'Workspace ready'),
+}));
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 jest.mock('expo-font', () => ({ useFonts: () => [true, null] }));
 jest.mock('@expo-google-fonts/space-grotesk', () => ({}));
@@ -52,13 +57,13 @@ jest.mock('@/store/useConfigStore', () => ({
   useConfigStore: { getState: () => ({ loadConfig: async () => {} }) },
 }));
 jest.mock('@/store/useAuthStore', () => ({
-  useAuthStore: { getState: () => ({ initialize: () => mockAuth }) },
+  useAuthStore: { getState: () => ({ initialize: mockInitializeAuth }) },
 }));
 jest.mock('@/store/useTranscriptStore', () => ({
   useTranscriptStore: { getState: () => ({ loadTranscripts: async () => {} }) },
 }));
 jest.mock('@/store/useDictionaryStore', () => ({
-  useDictionaryStore: { getState: () => ({ load: async () => {} }) },
+  useDictionaryStore: { getState: () => ({ load: mockLoadDictionary }) },
 }));
 jest.mock('@/store/useSnippetsStore', () => ({
   useSnippetsStore: { getState: () => ({ load: async () => {} }) },
@@ -79,7 +84,16 @@ jest.mock('@/components/superwall/OpenWhisprSuperwallProvider', () => ({
 }));
 jest.mock('@/components/ui/Text', () => ({ Text: require('react-native').Text }));
 jest.mock('@/components/ui/OpenWhisprMark', () => ({ OpenWhisprMark: () => null }));
-jest.mock('@/android/ui', () => ({ Button: () => null, styles: {}, palette: {} }));
+jest.mock('@/android/ui', () => ({
+  Button: ({ label, onPress }: { label: string; onPress: () => void }) =>
+    require('react').createElement(
+      require('react-native').Pressable,
+      { onPress },
+      require('react').createElement(require('react-native').Text, null, label),
+    ),
+  styles: {},
+  palette: {},
+}));
 jest.mock('@/hooks/useRevenueCatIdentity', () => ({ useRevenueCatIdentity: () => {} }));
 jest.mock('@/android/billing', () => ({ observeAndroidPurchaseUpdates: () => () => {} }));
 jest.mock('@/android/useBubblePipeline', () => ({ useBubblePipeline: () => {} }));
@@ -105,6 +119,11 @@ jest.mock('@/lib/transcriptAudio', () => ({
 
 import AndroidRoot from '../Root';
 
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockInitializeAuth.mockReset().mockImplementation(() => mockAuth);
+});
+
 it('recovers a killed recording on a cold Notes deep link after auth, without Home or automatic upload', async () => {
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
@@ -121,4 +140,21 @@ it('recovers a killed recording on a cold Notes deep link after auth, without Ho
   expect(mockResume).not.toHaveBeenCalled();
   view.rerender(<AndroidRoot />);
   expect(mockTransition).toHaveBeenCalledTimes(1);
+});
+
+it('shows the startup failure before reading collections and retries to the workspace', async () => {
+  mockInitializeAuth
+    .mockRejectedValueOnce(new Error('Session initialization failed'))
+    .mockResolvedValueOnce(undefined);
+  const view = render(<AndroidRoot />);
+  await waitFor(() => expect(view.getByText('Session initialization failed')).toBeTruthy());
+  expect(mockLoadDictionary).not.toHaveBeenCalled();
+  expect(mockInitializeNotes).not.toHaveBeenCalled();
+
+  fireEvent.press(view.getByText('retry'));
+  await waitFor(() => expect(view.getByText('Workspace ready')).toBeTruthy());
+  expect(mockInitializeAuth).toHaveBeenCalledTimes(2);
+  expect(mockLoadDictionary).toHaveBeenCalledTimes(1);
+  expect(mockInitializeNotes).toHaveBeenCalledTimes(1);
+  expect(view.queryByText('Session initialization failed')).toBeNull();
 });

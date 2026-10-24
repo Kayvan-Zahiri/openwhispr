@@ -98,8 +98,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
         useUsageStore.getState().reset();
         set({ user: null, sessionCookie: null, isGuest, isInitialized: true, isLoading: false });
       }
-    } catch {
+    } catch (error) {
       set({ isInitialized: true, isLoading: false });
+      // Android keeps the database blocked until ownership is selected. Let
+      // Root stop startup at its original failure instead of masking it with
+      // a later collection read against that blocked database.
+      if (Platform.OS === 'android') throw error;
     }
   },
 
