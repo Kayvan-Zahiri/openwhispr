@@ -102,6 +102,10 @@ export function AddWordsSheet({ visible, onClose, onSubmit }: Props) {
         <View className="mt-3 flex-row flex-wrap gap-2">
           {segments.map((segment) => {
             const isContext = segment.value.includes(' ');
+            const chipStyle = {
+              borderCurve: 'continuous' as const,
+              backgroundColor: isContext ? CONTEXT_TINT : undefined,
+            };
             return (
               <Pressable
                 key={segment.index}
@@ -110,15 +114,13 @@ export function AddWordsSheet({ visible, onClose, onSubmit }: Props) {
                 accessibilityLabel={copy('library.removeWord', `Remove ${segment.value}`, {
                   word: segment.value,
                 })}
-                style={({ pressed }) => [
-                  Platform.OS === 'android' && styles.androidChip,
-                  {
-                    borderCurve: 'continuous',
-                    backgroundColor: isContext ? CONTEXT_TINT : undefined,
-                    opacity: pressed ? 0.6 : 1,
-                  },
-                ]}
-                className={`${Platform.OS === 'android' ? 'py-1' : 'h-8'} flex-row items-center gap-1.5 rounded-[10px] pl-3 pr-2 ${
+                // NativeWind drops callback styles; keep Android constraints in static styles.
+                style={
+                  Platform.OS === 'android'
+                    ? [styles.androidChip, chipStyle]
+                    : ({ pressed }) => [chipStyle, { opacity: pressed ? 0.6 : 1 }]
+                }
+                className={`${Platform.OS === 'android' ? 'py-1 active:opacity-60' : 'h-8'} flex-row items-center gap-1.5 rounded-[10px] pl-3 pr-2 ${
                   isContext ? '' : 'bg-tertiarySystemFill'
                 }`}
               >

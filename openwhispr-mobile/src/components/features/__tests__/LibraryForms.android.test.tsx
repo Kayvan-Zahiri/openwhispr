@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet } from 'react-native';
+import { cssInterop } from 'react-native-css-interop/dist/runtime/native/api';
 import { createInstance } from 'i18next';
 import { I18nextProvider } from 'react-i18next';
 import en from '@/locales/en/translation.json';
@@ -9,6 +10,11 @@ import de from '@/locales/de/translation.json';
 import { AddSnippetSheet } from '../AddSnippetSheet';
 import { AddWordsSheet } from '../AddWordsSheet';
 
+// Use the native className adapter rather than Jest's default web resolution.
+// Otherwise Pressable style callbacks appear to work here but disappear on Android.
+jest.mock('react-native-css-interop/dist/runtime/api', () =>
+  jest.requireActual('react-native-css-interop/dist/runtime/native/api'),
+);
 jest.mock('@/lib/utils', () => ({ safeHaptics: jest.fn() }));
 jest.mock('@/lib/fonts', () => ({ AppFont: {} }));
 jest.mock('@/config/colors', () => ({ iosColor: () => '#000' }));
@@ -42,6 +48,7 @@ jest.mock('@/components/ui/FormSheet', () => {
 const originalOS = Platform.OS;
 beforeEach(() => {
   Platform.OS = 'android';
+  cssInterop(Pressable, { className: 'style' });
 });
 afterEach(() => {
   Platform.OS = originalOS;
@@ -145,4 +152,32 @@ it('keeps the existing English iOS form even with an Arabic provider', async () 
   );
   expect(screen.getByLabelText('Trigger')).toBeTruthy();
   expect(screen.getByText('Add snippet')).toBeTruthy();
+});
+
+it('preserves dictionary chip bounds and context tint through native className interop', async () => {
+  const i18n = await language('en');
+  const save = jest.fn();
+  const screen = render(
+    <I18nextProvider i18n={i18n}>
+      <AddWordsSheet visible onClose={jest.fn()} onSubmit={save} />
+    </I18nextProvider>,
+  );
+  const longWord = 'Pneumonoultramicroscopicsilicovolcanoconiosis';
+  const phrase = 'The word is SyntheticAcceptance279';
+  fireEvent.changeText(screen.getByLabelText('Add words'), `${longWord}, ${phrase}`);
+
+  for (const entry of [longWord, phrase]) {
+    const chip = screen.getByRole('button', { name: `Remove ${entry}` });
+    const style = StyleSheet.flatten(chip.props.style);
+    expect(style.maxWidth).toBe('100%');
+    expect(style.minWidth).toBeGreaterThanOrEqual(48);
+    expect(style.minHeight).toBeGreaterThanOrEqual(48);
+  }
+  const contextChip = screen.getByRole('button', { name: `Remove ${phrase}` });
+  expect(StyleSheet.flatten(contextChip.props.style).backgroundColor).toBe('rgba(0,122,255,0.12)');
+
+  fireEvent.press(contextChip);
+  expect(screen.getByLabelText('Add words').props.value).toBe(longWord);
+  expect(screen.queryByRole('button', { name: `Remove ${phrase}` })).toBeNull();
+  expect(save).not.toHaveBeenCalled();
 });
