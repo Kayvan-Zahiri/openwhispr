@@ -66,3 +66,17 @@ Private competitor analysis, audio, screenshots and logs are intentionally outsi
 The provider networking plugin enables Android cleartext traffic because users can configure arbitrary private-network HTTP addresses. Android's domain-based network security configuration cannot express those dynamic address ranges. This is an app-wide platform permission, not a per-client exception. The native `ProviderTransport` therefore remains responsible for rejecting public HTTP addresses, embedded URL credentials and fragments, and for disabling redirects, cookies and disk cache. HTTPS certificate validation is unchanged. Other app and SDK endpoints must continue to use HTTPS; this setting does not enforce that for them.
 
 Run `python3 scripts/android-provider-network/run.py` with the build environment above and a running emulator. It uses the generated Expo network settings and the actual compiled transport in a disposable, self-targeted test package. It checks private HTTP discovery, cookie isolation, redirect rejection and invalid/public URL rejection without opening the product app or using real credentials. It uninstalls its own package afterward. This component test does not replace installed Play acceptance of provider discovery, connection checks, saving and execution.
+
+### Provider request scheduling
+
+Provider HTTP and response reads run on Expo's background pool. They must not occupy Expo's shared serial async queue: credential lookup and removal depend on other native modules using that queue.
+
+With Java 17 and an emulator connected, run from `openwhispr-mobile/android`:
+
+```sh
+./gradlew :android-dictation:connectedDebugAndroidTest \
+  -PreactNativeArchitectures=arm64-v8a \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.openwhispr.dictation.ProviderRequestQueueTest
+```
+
+The separate test app holds loopback HTTP responses open while another Expo async function computes a digest. It checks both header and body waits, cancellation during the body wait, cancellation before dispatch and invalid-address rejection. The test invokes the real registered provider function through Expo's dispatcher; it does not exercise Hermes, app credential storage or the installed Play UI. Its test-only manifest allows loopback HTTP. Installed acceptance must still verify that Saved/Remove Key remains available during note generation, removal cancels the request, and the original note is preserved.

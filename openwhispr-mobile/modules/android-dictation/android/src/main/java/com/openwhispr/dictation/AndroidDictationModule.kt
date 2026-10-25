@@ -116,7 +116,10 @@ class AndroidDictationModule : Module() {
     AsyncFunction("releaseMoonshine") { promise: Promise ->
       if (moonshineRuntime.isInitialized()) moonshine.release(promise) else promise.resolve(null)
     }
+    // Credential lookup/removal uses other modules on Expo's shared async queue.
+    // Keep blocking HTTP and response reads off that queue so they remain available.
     AsyncFunction("requestProvider") { options: Map<String, Any?> -> providers.request(options) }
+      .runOnQueue(appContext.backgroundCoroutineScope)
     Function("cancelProviderRequest") { id: String -> providers.cancel(id) }
     Function("getLocale") { context.resources.configuration.locales[0].toLanguageTag() }
     Function("getDeviceProfile") {
