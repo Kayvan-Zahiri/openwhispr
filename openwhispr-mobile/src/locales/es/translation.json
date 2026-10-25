@@ -232,6 +232,7 @@
     "plansAndBilling": "Planes y facturación",
     "planChecking": "Comprobando tu plan…",
     "planUnavailable": "No se pudo cargar tu plan. Conéctate a internet e inténtalo de nuevo.",
+    "planSignInRequired": "Tu sesión ha caducado. Vuelve a iniciar sesión para consultar tu plan. Tu trabajo guardado en este dispositivo sigue disponible.",
     "meetingLeaveTitle": "¿Salir de esta grabación?",
     "meetingLeaveBody": "Detén y guarda la transcripción, o cancela la transcripción y conserva el audio en tu nota.",
     "meetingKeepRecording": "Seguir grabando",

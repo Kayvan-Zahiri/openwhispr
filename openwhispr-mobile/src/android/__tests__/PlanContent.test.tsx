@@ -29,6 +29,7 @@ jest.mock('@/store/useUsageStore', () => ({
   useUsageStore: require('zustand').create(() => ({
     usage: null,
     isLoading: false,
+    sessionRejected: false,
     load: jest.fn(async () => ({ status: 'loaded' })),
   })),
 }));
@@ -72,6 +73,7 @@ beforeEach(() => {
   jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
   useUsageStore.setState({
     isLoading: false,
+    sessionRejected: false,
     usage: {
       billingUserId: 'billing-a',
       isSubscribed: false,
@@ -89,6 +91,18 @@ beforeEach(() => {
     },
   });
   useAndroidBillingStatus.setState({ accounts: { 'billing-a': 'payment-pending' } });
+});
+it('offers sign-in instead of cached allowance or billing actions after session rejection', () => {
+  useUsageStore.setState({ sessionRejected: true });
+  render(<PlanContent />);
+
+  expect(screen.getByText('planSignInRequired')).toBeTruthy();
+  expect(screen.queryByText('2,000 of 2,000 words available')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'upgrade' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'restorePurchases' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'refreshAccess' })).toBeNull();
+  fireEvent.press(screen.getByRole('button', { name: 'signIn' }));
+  expect(router.push).toHaveBeenCalledWith('/auth');
 });
 it('keeps unknown access out of checkout and offers a retry after loading fails', async () => {
   useUsageStore.setState({ usage: null });

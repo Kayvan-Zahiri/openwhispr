@@ -181,6 +181,35 @@ it('erases only the deleted account collection and returns to the retained Local
   expect(useAuthStore.getState().user).toBeNull();
 });
 
+it('retains unsynced private data when reauthenticating without signing out', async () => {
+  require('@/db/migrate').runMigrations();
+  const legacy = mockFiles.get('openwhispr_notes.db')!;
+  legacy.exec(`
+    INSERT INTO sync_state(key, value) VALUES ('sync.user_id', 'account-a');
+    INSERT INTO notes(id, content, is_private, source_file)
+      VALUES (81, 'Keep this private transcript', 1, 'file:///docs/meeting-81.wav');
+    INSERT INTO dictionary_entries(word, source) VALUES ('Retainedword', 'manual');
+    INSERT INTO snippets(trigger, replacement) VALUES ('retained', 'Retain this snippet');
+  `);
+  const { useAuthStore } = require('@/store/useAuthStore');
+  const { notesRepository } = require('@/data');
+  await useAuthStore.getState().initialize();
+  await useAuthStore.getState().signIn('account-a', 'synthetic');
+
+  expect(notesRepository.getNoteById(81)).toMatchObject({
+    content: 'Keep this private transcript',
+    isPrivate: 1,
+    sourceFile: 'file:///docs/meeting-81.wav',
+  });
+  expect(legacy.prepare('SELECT word FROM dictionary_entries').all()).toEqual([
+    { word: 'Retainedword' },
+  ]);
+  expect(legacy.prepare('SELECT replacement FROM snippets').all()).toEqual([
+    { replacement: 'Retain this snippet' },
+  ]);
+  expect(mockDeleteAudio).not.toHaveBeenCalled();
+});
+
 it("restores account ownership after a process restart without importing another account's data", async () => {
   require('@/db/migrate').runMigrations();
   const legacy = mockFiles.get('openwhispr_notes.db')!;

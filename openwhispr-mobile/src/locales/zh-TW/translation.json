@@ -232,6 +232,7 @@
     "plansAndBilling": "方案與帳單",
     "planChecking": "正在檢查你的方案…",
     "planUnavailable": "無法載入你的方案。請連線至網際網路後重試。",
+    "planSignInRequired": "登入已過期。請重新登入以查看你的方案。儲存在此裝置上的內容仍可使用。",
     "meetingLeaveTitle": "離開此次錄音？",
     "meetingLeaveBody": "停止並儲存轉錄，或取消轉錄並將音訊保留在筆記中。",
     "meetingKeepRecording": "繼續錄音",

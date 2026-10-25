@@ -232,6 +232,7 @@
     "plansAndBilling": "Offres et facturation",
     "planChecking": "Vérification de votre offre…",
     "planUnavailable": "Impossible de charger votre offre. Connectez-vous à Internet et réessayez.",
+    "planSignInRequired": "Votre session a expiré. Reconnectez-vous pour consulter votre offre. Votre travail enregistré sur cet appareil reste disponible.",
     "meetingLeaveTitle": "Quitter cet enregistrement ?",
     "meetingLeaveBody": "Arrêtez et enregistrez la transcription, ou annulez la transcription et conservez l’audio dans votre note.",
     "meetingKeepRecording": "Continuer à enregistrer",

@@ -20,6 +20,7 @@ export function PlanContent() {
   const user = useAuthStore((state) => state.user);
   const usage = useUsageStore((state) => state.usage);
   const isUsageLoading = useUsageStore((state) => state.isLoading);
+  const sessionRejected = useUsageStore((state) => state.sessionRejected);
   const billingStatus = useAndroidBillingStatus((state) =>
     usage?.billingUserId ? state.accounts[usage.billingUserId] : undefined,
   );
@@ -54,6 +55,19 @@ export function PlanContent() {
       setBusy(false);
     }
   };
+  if (signedIn && sessionRejected) {
+    return (
+      <>
+        <Text accessibilityRole="header" style={styles.title}>
+          {t('plansAndBilling')}
+        </Text>
+        <Text accessibilityLiveRegion="polite" style={styles.body}>
+          {t('planSignInRequired')}
+        </Text>
+        <Button label={t('signIn')} onPress={() => router.push('/auth')} />
+      </>
+    );
+  }
   if (signedIn && !usage) {
     return (
       <>

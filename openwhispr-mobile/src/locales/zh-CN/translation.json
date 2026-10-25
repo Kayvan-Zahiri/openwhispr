@@ -232,6 +232,7 @@
     "plansAndBilling": "方案与账单",
     "planChecking": "正在检查你的套餐…",
     "planUnavailable": "无法加载你的套餐。请连接互联网后重试。",
+    "planSignInRequired": "登录已过期。请重新登录以查看你的套餐。保存在此设备上的内容仍可使用。",
     "meetingLeaveTitle": "离开此次录音？",
     "meetingLeaveBody": "停止并保存转录，或取消转录并将音频保留在笔记中。",
     "meetingKeepRecording": "继续录音",

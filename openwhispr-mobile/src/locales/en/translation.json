@@ -232,6 +232,7 @@
     "plansAndBilling": "Plans & billing",
     "planChecking": "Checking your plan…",
     "planUnavailable": "Your plan could not be loaded. Connect to the internet and try again.",
+    "planSignInRequired": "Your session has expired. Sign in again to check your plan. Your on-device work is still available.",
     "meetingLeaveTitle": "Leave this recording?",
     "meetingLeaveBody": "Stop and save the transcript, or cancel transcription and keep the audio in your note.",
     "meetingKeepRecording": "Keep recording",

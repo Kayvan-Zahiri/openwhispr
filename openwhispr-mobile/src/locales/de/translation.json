@@ -232,6 +232,7 @@
     "plansAndBilling": "Tarife und Abrechnung",
     "planChecking": "Dein Tarif wird geprüft…",
     "planUnavailable": "Dein Tarif konnte nicht geladen werden. Verbinde dich mit dem Internet und versuche es erneut.",
+    "planSignInRequired": "Deine Sitzung ist abgelaufen. Melde dich erneut an, um deinen Tarif zu prüfen. Deine Arbeit auf diesem Gerät ist weiterhin verfügbar.",
     "meetingLeaveTitle": "Aufnahme verlassen?",
     "meetingLeaveBody": "Beende und speichere das Transkript oder brich die Transkription ab und behalte die Audiodatei in deiner Notiz.",
     "meetingKeepRecording": "Weiter aufnehmen",
