@@ -1,8 +1,9 @@
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import * as SQLite from 'expo-sqlite';
 import * as schema from './schema';
+import { openApplicationDatabase } from './connections';
 
-const expo = SQLite.openDatabaseSync('openwhispr_notes.db');
+const expo = openApplicationDatabase('openwhispr_notes.db');
 let active = drizzle(expo, { schema });
 let unavailable = false;
 

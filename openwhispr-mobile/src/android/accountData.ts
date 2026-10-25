@@ -1,9 +1,9 @@
 import 'expo-sqlite/localStorage/install';
-import * as SQLite from 'expo-sqlite';
 import * as FileSystem from 'expo-file-system/legacy';
 import { create } from 'zustand';
 import { activateAccountDatabase, blockAccountDatabase } from '@/db';
 import { runMigrations } from '@/db/migrate';
+import { openApplicationDatabase } from '@/db/connections';
 import { randomUUID } from '@/lib/uuid';
 
 const MANIFEST_KEY = 'android.local-accounts.v1';
@@ -73,7 +73,7 @@ function readManifest(): Manifest {
 
   // The only reliable owner on older installs is sync.user_id. Never infer
   // ownership from whoever happens to sign in during this upgrade.
-  const legacy = SQLite.openDatabaseSync(LEGACY_DATABASE);
+  const legacy = openApplicationDatabase(LEGACY_DATABASE);
   const states = legacy.getAllSync<{ key: string; value: string }>(
     "SELECT key, value FROM sync_state WHERE key IN ('sync.user_id', 'sync.anonymous_user_id')",
   );
@@ -134,7 +134,7 @@ export function selectAccountData(user: User): void {
       };
       manifest.accounts.push(account);
     }
-    const connection = SQLite.openDatabaseSync(account.file);
+    const connection = openApplicationDatabase(account.file);
     runMigrations(connection, account.file === LEGACY_DATABASE);
     if (user?.isAnonymous) {
       connection.runSync(
@@ -177,7 +177,7 @@ export async function eraseAccountData(userId: string): Promise<void> {
     const manifest = readManifest();
     const account = manifest.accounts.find((entry) => entry.owner === `account:${userId}`);
     if (!account) return;
-    const connection = SQLite.openDatabaseSync(account.file);
+    const connection = openApplicationDatabase(account.file);
     const directory =
       FileSystem.documentDirectory &&
       `${FileSystem.documentDirectory}${account.audioNamespace ? `account-audio/${account.audioNamespace}/` : ''}`;

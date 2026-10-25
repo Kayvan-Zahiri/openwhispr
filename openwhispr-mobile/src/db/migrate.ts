@@ -1,8 +1,9 @@
 import 'expo-sqlite/localStorage/install';
 import * as SQLite from 'expo-sqlite';
 import { randomUUID } from '@/lib/uuid';
+import { openApplicationDatabase } from './connections';
 
-const legacyDb = SQLite.openDatabaseSync('openwhispr_notes.db');
+const legacyDb = openApplicationDatabase('openwhispr_notes.db');
 
 const LEGACY_DICTIONARY_KEY = 'openwhispr_dictionary';
 
